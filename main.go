@@ -2,19 +2,26 @@ package main
 
 import (
 	"encoding/json"
+	cli "finnhub-stock-analysis-go/cmd"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"os"
 )
 
 func main() {
-	w, _, err := websocket.DefaultDialer.Dial("wss://ws.finnhub.io?token=capm2q2ad3i1rqbdbqk0", nil)
+	err := cli.Execute()
+	if err != nil {
+		return
+	}
+	fmt.Println("flags: ", cli.CLI)
+	fmt.Println(fmt.Sprintf("wss://ws.finnhub.io?token=%s", cli.CLI.Token))
+	w, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("wss://ws.finnhub.io?token=%s", cli.CLI.Token), nil)
 	if err != nil {
 		panic(err)
 	}
 	defer w.Close()
 
-	symbols := []string{"AAPL", "AMZN", "MSFT", "BINANCE:BTCUSDT", "GTLB"}
+	symbols := cli.CLI.Stocks
 	for _, s := range symbols {
 		msg, _ := json.Marshal(Subscribe{"subscribe", s})
 		err := w.WriteMessage(websocket.TextMessage, msg)
