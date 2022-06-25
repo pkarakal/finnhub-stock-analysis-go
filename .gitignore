@@ -17,4 +17,6 @@
 
 # Dependency directories (remove the comment below to include it)
 vendor/
-finnhub-stock-analysis
+finnhub-stock-analysis-go
+finnhub
+data/
