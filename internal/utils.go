@@ -83,3 +83,10 @@ func SanitizeString(s string) string {
 	}
 	return re.ReplaceAllString(s, "_")
 }
+
+func CreateDirs(p string) error {
+	if err := os.MkdirAll(p, 0750); err != nil && !os.IsExist(err) {
+		log.Fatalf("Couldn't create data directory because %v. Exiting... ", err)
+	}
+	return nil
+}
