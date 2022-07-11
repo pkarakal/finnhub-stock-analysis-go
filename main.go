@@ -43,10 +43,11 @@ func main() {
 		}
 	}
 	files := make([]*os.File, len(cli.CLI.Stocks))
-	// create data directory
-	if _, err := os.Stat("data"); os.IsNotExist(err) {
-		if err := os.Mkdir("data", 0600); err != nil {
-			log.Fatalf("Couldn't create data directory because %v. Exiting... ", err)
+	dirs := []string{"data/rolling", "data/candlesticks"}
+	for _, dir := range dirs {
+		err := internal.CreateDirs(dir)
+		if err != nil {
+			log.Fatalf("Couldn't create directories. %v", err)
 		}
 	}
 	createFiles(mapper, syncMap)
