@@ -1,10 +1,9 @@
-package trades
+package internal
 
 import (
 	"encoding/csv"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
@@ -45,7 +44,7 @@ func (stock *Data) WriteHeaders(file *os.File) error {
 	if file == nil {
 		return errors.New("file handler cannot be nil")
 	}
-	if isFileEmpty(file) {
+	if IsFileEmpty(file) {
 		w := csv.NewWriter(file)
 		if bytes, _ := file.Read([]byte{}); bytes == 0 {
 			err := w.Write(stock.getHeaders())
@@ -62,26 +61,16 @@ func (stock *Data) WriteHeaders(file *os.File) error {
 	return nil
 }
 
-func isFileEmpty(f *os.File) bool {
-	r := csv.NewReader(f)
-	r.FieldsPerRecord = -1 //Number of records per record. Set to Negative value for variable
-	r.TrimLeadingSpace = true
-	r.LazyQuotes = true
-	if records, err := r.Read(); records == nil && err == io.EOF {
-		return true
-	}
-	return false
-}
-
 func (stock *Data) getHeaders() []string {
-	return []string{"Symbol", "Price", "Timestamp", "Write Timestamp"}
+	return []string{"Symbol", "Price", "Timestamp", "WriteTimestamp"}
 }
 
 func (stock *Data) toSlice() []string {
+	s := SanitizeString(stock.Symbol)
 	return []string{
-		stock.Symbol,
-		strconv.FormatFloat(stock.Price, 'E', -1, 64),
+		s,
+		strconv.FormatFloat(stock.Price, 'f', -1, 64),
 		strconv.FormatUint(stock.Timestamp, 10),
-		strconv.FormatInt(time.Now().UTC().UnixNano(), 10),
+		strconv.FormatInt(time.Now().UnixMilli(), 10),
 	}
 }
