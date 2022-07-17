@@ -24,14 +24,16 @@ func main() {
 	}
 	defer w.Close()
 
-	mapper := make(map[string]*os.File, len(cli.CLI.Stocks))
-	syncMap := make(map[string]*sync.Once, len(cli.CLI.Stocks))
-	candlestickMap := make(map[string]*os.File, len(cli.CLI.Stocks))
-	stockChans := make(map[string]chan time.Time, len(cli.CLI.Stocks))
-
-	for _, v := range cli.CLI.Stocks {
-		stockChans[v] = make(chan time.Time, 100)
+	dirs := []string{"data/rolling", "data/candlesticks"}
+	for _, dir := range dirs {
+		err := internal.CreateDirs(dir)
+		if err != nil {
+			log.Fatalf("Couldn't create directories. %v", err)
+		}
 	}
+
+	mapper := make(map[string]*internal.StockHandle, len(cli.CLI.Stocks))
+	internal.InitializeMapper(mapper)
 
 	closeFile := func(f *os.File) {
 		f.Sync()
@@ -42,16 +44,11 @@ func main() {
 			closeFile(file)
 		}
 	}
-	files := make([]*os.File, len(cli.CLI.Stocks))
-	dirs := []string{"data/rolling", "data/candlesticks"}
-	for _, dir := range dirs {
-		err := internal.CreateDirs(dir)
-		if err != nil {
-			log.Fatalf("Couldn't create directories. %v", err)
-		}
+	files := make([]*os.File, 2*len(cli.CLI.Stocks))
+	for i, v := range cli.CLI.Stocks {
+		files[i] = mapper[v].CandlestickFile
+		files[i+len(cli.CLI.Stocks)] = mapper[v].RollingFile
 	}
-	createFiles(mapper, syncMap)
-	createCstickFiles(candlestickMap)
 	defer closeFiles(files)
 
 	symbols := cli.CLI.Stocks
@@ -71,7 +68,7 @@ func main() {
 			case <-ticker.C:
 				{
 					for _, v := range cli.CLI.Stocks {
-						stockChans[v] <- time.Now().Truncate(time.Minute).Add(-1 * time.Minute)
+						mapper[v].StockChannel <- time.Now().Truncate(time.Minute).Add(-1 * time.Minute)
 					}
 					break
 				}
@@ -83,7 +80,7 @@ func main() {
 	}()
 
 	for _, v := range cli.CLI.Stocks {
-		go internal.WaitForCandlestick(mapper[v], stockChans[v], candlestickMap[v])
+		go internal.WaitForCandlestick(mapper[v])
 	}
 
 	var msg internal.Response
@@ -92,80 +89,27 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to decode json %e", err)
 		}
-		parseMessage(&msg, mapper, syncMap)
+		parseMessage(&msg, mapper)
 	}
 }
 
-func createFiles(mapper map[string]*os.File, syncMap map[string]*sync.Once) {
-	for _, stock := range cli.CLI.Stocks {
-		var (
-			file *os.File
-			err  error
-		)
-		safeStock := internal.SanitizeString(stock)
-		file, err = os.OpenFile("data/rolling/"+safeStock+".csv", os.O_RDWR|os.O_CREATE|os.O_APPEND|os.O_SYNC, 0660)
-		if err != nil && errors.Is(err, os.ErrNotExist) {
-			file, err = os.Create("data/rolling/" + safeStock + ".csv")
-			if errors.Is(err, os.ErrPermission) {
-				log.Fatalf("Cannot create a file due to permission reasons")
-			} else {
-				log.Fatalf("Couldn't create the file")
-			}
-		} else if err != nil {
-			log.Fatalf("Couln't create file %v", err)
-		}
-		mapper[stock] = file
-		syncMap[stock] = &sync.Once{}
-	}
-
-}
-
-func createCstickFiles(candlestickMap map[string]*os.File) {
-	for _, v := range cli.CLI.Stocks {
-		var (
-			file *os.File
-			err  error
-		)
-		safeStock := internal.SanitizeString(v)
-		file, err = os.OpenFile("data/candlesticks/"+safeStock+".csv", os.O_RDWR|os.O_CREATE|os.O_APPEND|os.O_SYNC, 0660)
-		if err != nil && errors.Is(err, os.ErrNotExist) {
-			file, err = os.Create("data/candlesticks/" + safeStock + ".csv")
-			if errors.Is(err, os.ErrPermission) {
-				log.Fatalf("Cannot create a file due to permission reasons")
-			} else {
-				log.Fatalf("Couldn't create the file")
-			}
-		} else if err != nil {
-			log.Fatalf("Couln't create file %v", err)
-		}
-		candlestickMap[v] = file
-		if internal.IsFileEmpty(file) {
-			cs := &internal.CandleStick{}
-			err := cs.WriteHeaders(file)
-			if err != nil {
-				log.Fatalf("Write headers failed due to %v", err.Error())
-			}
-		}
-	}
-}
-
-func parseMessage(msg *internal.Response, mapper map[string]*os.File, syncMap map[string]*sync.Once) {
+func parseMessage(msg *internal.Response, mapper map[string]*internal.StockHandle) {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(msg.Data))
 	for _, stock := range msg.Data {
-		go func(stock internal.Data, syncMap map[string]*sync.Once, w *sync.WaitGroup) {
-			syncMap[stock.Symbol].Do(func() {
-				err := stock.WriteHeaders(mapper[stock.Symbol])
+		go func(stock internal.Data, synchro *sync.Once, w *sync.WaitGroup) {
+			synchro.Do(func() {
+				err := stock.WriteHeaders(mapper[stock.Symbol].RollingFile)
 				if err != nil {
 					log.Fatalf("Write headers once failed due to %v", err.Error())
 				}
 			})
-			err := stock.WriteToDisk(mapper[stock.Symbol])
+			err := stock.WriteToDisk(mapper[stock.Symbol].RollingFile)
 			if errors.Is(err, os.ErrPermission) {
 				log.Fatalf("Permission denied while reading or writing to file")
 			}
 			w.Done()
-		}(stock, syncMap, wg)
+		}(stock, mapper[stock.Symbol].OnceFlag, wg)
 	}
 	wg.Wait()
 }

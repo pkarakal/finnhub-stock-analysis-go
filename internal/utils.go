@@ -63,15 +63,15 @@ func FindItems(f string, t *time.Time) []Data {
 	return data[:offset]
 }
 
-func WaitForCandlestick(f *os.File, in chan time.Time, cstick *os.File) {
+func WaitForCandlestick(stock *StockHandle) {
 	for {
-		tm := <-in
-		items := FindItems(f.Name(), &tm)
+		tm := <-stock.StockChannel
+		items := FindItems(stock.RollingFile.Name(), &tm)
 		if len(items) == 0 || items == nil {
 			log.Println("Cannot calculate candlestick when there is no data")
 		} else {
 			cs := CalculateCandlestick(items)
-			_ = cs.WriteToDisk(cstick)
+			_ = cs.WriteToDisk(stock.CandlestickFile)
 		}
 	}
 }
