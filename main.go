@@ -24,7 +24,7 @@ func main() {
 	}
 	defer w.Close()
 
-	dirs := []string{"data/rolling", "data/candlesticks"}
+	dirs := []string{"data/rolling", "data/candlesticks", "data/mean"}
 	for _, dir := range dirs {
 		err := internal.CreateDirs(dir)
 		if err != nil {
@@ -44,10 +44,11 @@ func main() {
 			closeFile(file)
 		}
 	}
-	files := make([]*os.File, 2*len(cli.CLI.Stocks))
+	files := make([]*os.File, 3*len(cli.CLI.Stocks))
 	for i, v := range cli.CLI.Stocks {
 		files[i] = mapper[v].CandlestickFile
 		files[i+len(cli.CLI.Stocks)] = mapper[v].RollingFile
+		files[2*i+len(cli.CLI.Stocks)] = mapper[v].MeanFile
 	}
 	defer closeFiles(files)
 
@@ -69,6 +70,7 @@ func main() {
 				{
 					for _, v := range cli.CLI.Stocks {
 						mapper[v].StockChannel <- time.Now().Truncate(time.Minute).Add(-1 * time.Minute)
+						mapper[v].RollingMeanChannel <- time.Now().Truncate(time.Minute).Add(-15 * time.Minute)
 					}
 					break
 				}
@@ -81,6 +83,7 @@ func main() {
 
 	for _, v := range cli.CLI.Stocks {
 		go internal.WaitForCandlestick(mapper[v])
+		go internal.WaitForMeanData(mapper[v])
 	}
 
 	var msg internal.Response

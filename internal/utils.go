@@ -22,7 +22,7 @@ func IsFileEmpty(f *os.File) bool {
 	return false
 }
 
-func FindItems(f string, t *time.Time) []Data {
+func FindItems(f string, t *time.Time, l int64) []Data {
 	file, _ := os.OpenFile(f, os.O_RDWR, 0600)
 	reader := csv.NewReader(file)
 	reader.TrimLeadingSpace = true
@@ -44,7 +44,7 @@ func FindItems(f string, t *time.Time) []Data {
 			fmt.Println(err.Error())
 		}
 		ts := time.UnixMilli(i).UTC()
-		if ts.After(*t) && ts.After(t.Add(1*time.Minute)) {
+		if ts.After(*t) && ts.After(t.Add(time.Duration(l)*time.Minute)) {
 			price, _ := strconv.ParseFloat(v[1], 64)
 			if offset >= cap(data) {
 				sl := make([]Data, 2*len(data), 2*len(data))
@@ -66,12 +66,25 @@ func FindItems(f string, t *time.Time) []Data {
 func WaitForCandlestick(stock *StockHandle) {
 	for {
 		tm := <-stock.StockChannel
-		items := FindItems(stock.RollingFile.Name(), &tm)
+		items := FindItems(stock.RollingFile.Name(), &tm, 1)
 		if len(items) == 0 || items == nil {
 			log.Println("Cannot calculate candlestick when there is no data")
 		} else {
 			cs := CalculateCandlestick(items)
 			_ = cs.WriteToDisk(stock.CandlestickFile)
+		}
+	}
+}
+
+func WaitForMeanData(stock *StockHandle) {
+	for {
+		tm := <-stock.RollingMeanChannel
+		items := FindItems(stock.RollingFile.Name(), &tm, 15)
+		if len(items) == 0 || items == nil {
+			log.Println("Cannot calculate mean stock data when there is no data")
+		} else {
+			s := CalculateMeanStockData(items, tm, tm.Add(15*time.Minute))
+			_ = s.WriteToDisk(stock.MeanFile)
 		}
 	}
 }
