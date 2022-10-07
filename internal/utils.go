@@ -44,7 +44,7 @@ func FindItems(f string, t *time.Time, l int64) []Data {
 			fmt.Println(err.Error())
 		}
 		ts := time.UnixMilli(i).UTC()
-		if ts.After(*t) && ts.After(t.Add(time.Duration(l)*time.Minute)) {
+		if ts.After(*t) && ts.Before(t.Add(time.Duration(l)*time.Minute)) {
 			price, _ := strconv.ParseFloat(v[1], 64)
 			if offset >= cap(data) {
 				sl := make([]Data, 2*len(data), 2*len(data))
